@@ -15,7 +15,7 @@ create or replace package ut_annotation_cache_manager authid definer as
   See the License for the specific language governing permissions and
   limitations under the License.
   */
-
+  subtype t_cache_schema_info is ut_annotation_cache_schema%rowtype;
   /**
    * Populates cache with information about object and it's annotations
    * Cache information for individual object is modified by this code
@@ -34,12 +34,21 @@ create or replace package ut_annotation_cache_manager authid definer as
    */
   function get_annotations_for_objects(a_cached_objects ut_annotation_objs_cache_info) return sys_refcursor;
 
+  function get_cache_schema_info(a_object_owner varchar2, a_object_type varchar2) return t_cache_schema_info;
+
   /**
    * Removes cached information about annotations for objects on the list and updates parse_time in cache info table.
    *
    * @param a_objects a `ut_annotation_objs_cache_info` list with information about objects to remove from cache
    */
   procedure cleanup_cache(a_objects ut_annotation_objs_cache_info);
+
+  /**
+   * Removes passed objects from cache
+   *
+   * @param a_objects a `ut_annotation_objs_cache_info` list with information about objects to remove from cache
+   */
+  procedure delete_cache(a_objects ut_annotation_objs_cache_info);
 
   /**
    * Removes cached information about annotations for objects of specified type and specified owner

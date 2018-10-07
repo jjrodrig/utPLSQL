@@ -204,6 +204,9 @@ create or replace type body ut_compound_data_value as
     l_row_diffs       ut_compound_data_helper.tt_row_diffs;
     c_max_rows        constant integer := 20;   
     l_sql             varchar2(32767);
+    l_expected_sql     varchar2(32767);
+    l_actual_sql      varchar2(32767);
+    
     
     function get_column_pk_hash(a_join_by_xpath varchar2) return varchar2 is
       l_column varchar2(32767);
@@ -228,15 +231,30 @@ create or replace type body ut_compound_data_value as
     l_other   := treat(a_other as ut_compound_data_value);
 
     l_diff_id := ut_compound_data_helper.get_hash(self.data_id||l_other.data_id);
-    l_column_filter := ut_compound_data_helper.get_columns_filter(a_exclude_xpath, a_include_xpath);
+    l_column_filter := ut_compound_data_helper.get_columns_filter_no_binds(a_exclude_xpath, a_include_xpath);
+    
+    /*!*
+    * We are guessing that both are equal and doublecheck this, if true we dont need to compare full set.
+    */
+    
+    l_expected_sql := 'select '||l_column_filter||'
+                              from  ' || l_ut_owner || '.ut_compound_data_tmp ucd
+                              where data_id = '''||self.data_id||'''';
+    l_actual_sql   := 'select '||l_column_filter||'
+                              from  ' || l_ut_owner || '.ut_compound_data_tmp ucd
+                              where data_id = '''||l_other.data_id||'''';
+                                
+    if a_inclusion_compare or (ut_compound_data_helper.get_sql_hash(l_expected_sql) != ut_compound_data_helper.get_sql_hash(l_actual_sql)) then
       
-    /**
-    * Due to incompatibility issues in XML between 11 and 12.2 and 12.1 versions we will prepopulate pk_hash upfront to
-    * avoid optimizer incorrectly rewrite and causing NULL error or ORA-600
-    **/        
-    execute immediate 'merge into ' || l_ut_owner || '.ut_compound_data_tmp tgt
+      l_column_filter := ut_compound_data_helper.get_columns_filter(a_exclude_xpath, a_include_xpath);  
+      
+      /**
+      * Due to incompatibility issues in XML between 11 and 12.2 and 12.1 versions we will prepopulate pk_hash upfront to
+      * avoid optimizer incorrectly rewrite and causing NULL error or ORA-600
+      **/        
+      execute immediate 'merge into ' || l_ut_owner || '.ut_compound_data_tmp tgt
                        using (
-                              select '||l_ut_owner ||'.ut_compound_data_helper.get_hash(ucd.item_data.getclobval()) item_hash, 
+                              select '||l_ut_owner ||'.ut_compound_data_helper.get_hash(ucd.item_data.getClobVal()) item_hash, 
                                       pk_hash, ucd.item_no, ucd.data_id
                               from
                               (
@@ -251,31 +269,35 @@ create or replace type body ut_compound_data_value as
                            tgt.pk_hash = src.pk_hash ]'
                        using a_exclude_xpath, a_include_xpath,a_join_by_xpath,self.data_id, l_other.data_id;
     
-    /*!* 
-    * Comparision is based on type of search, for inclusion based search we will look for left join only.
-    * For normal two side diff we will peform minus on two sets two get diffrences.
-    * SELF is expected. 
-    * Due to growing complexity I have moved a dynamic SQL into helper package.
-    */
-    l_sql := ut_compound_data_helper.get_refcursor_matcher_sql(l_ut_owner,a_inclusion_compare);
+      /*!* 
+      * Comparision is based on type of search, for inclusion based search we will look for left join only.
+      * For normal two side diff we will peform minus on two sets two get diffrences.
+      * SELF is expected. 
+      * Due to growing complexity I have moved a dynamic SQL into helper package.
+      */
+      l_sql := ut_compound_data_helper.get_refcursor_matcher_sql(l_ut_owner,a_inclusion_compare);
     
-    execute immediate l_sql
-    using self.data_id, l_other.data_id,
+      execute immediate l_sql
+      using self.data_id, l_other.data_id,
           l_diff_id, 
           self.data_id, l_other.data_id,
           l_other.data_id,self.data_id;
                
-    /*!*
-    * Result OK when is not inclusion matcher and both are the same 
-    * Resullt OK when is inclusion matcher and left contains right set
-    */
-    if sql%rowcount = 0 and self.elements_count = l_other.elements_count and not(a_inclusion_compare ) then
-      l_result := 0;
-    elsif sql%rowcount = 0 and a_inclusion_compare then
-      l_result := 0;
+      /*!*
+      * Result OK when is not inclusion matcher and both are the same 
+      * Resullt OK when is inclusion matcher and left contains right set
+      */
+      if sql%rowcount = 0 and self.elements_count = l_other.elements_count and not(a_inclusion_compare ) then
+        l_result := 0;
+      elsif sql%rowcount = 0 and a_inclusion_compare then
+        l_result := 0;
+      else
+        l_result := 1;
+      end if;
     else
-      l_result := 1;
+      l_result := 0;
     end if;
+    
     return l_result;
   end;
 

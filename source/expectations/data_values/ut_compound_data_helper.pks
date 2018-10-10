@@ -55,11 +55,6 @@ create or replace package ut_compound_data_helper authid definer is
     a_table_alias varchar2 := 'ucd', a_column_alias varchar2 := 'item_data'
   ) return varchar2;
 
-  function get_columns_filter_no_binds(
-    a_exclude_xpath varchar2, a_include_xpath varchar2,
-    a_table_alias varchar2 := 'ucd', a_column_alias varchar2 := 'item_data'
-  ) return varchar2;
-
   function get_columns_diff(
     a_expected xmltype, a_actual xmltype, a_exclude_xpath varchar2, a_include_xpath varchar2
   ) return tt_column_diffs;
@@ -78,9 +73,6 @@ create or replace package ut_compound_data_helper authid definer is
 
   function get_hash(a_data raw, a_hash_type binary_integer := dbms_crypto.hash_sh1)  return t_hash;
   function get_hash(a_data clob, a_hash_type binary_integer := dbms_crypto.hash_sh1) return t_hash;
-  
-  function get_sql_hash(a_sql_text varchar2, a_hash_type binary_integer := dbms_crypto.hash_sh1) return t_hash;
-  
   function columns_hash(
     a_data_value_cursor ut_data_value_refcursor, a_exclude_xpath varchar2, a_include_xpath varchar2,
     a_hash_type binary_integer := dbms_crypto.hash_sh1
@@ -90,6 +82,10 @@ create or replace package ut_compound_data_helper authid definer is
   return tt_missing_pk;
 
   function get_refcursor_matcher_sql(a_owner in varchar2,a_inclusion_matcher boolean := false, a_negated_match boolean := false) return varchar2;
+
+  function generate_xmltab_stmt (a_column_info xmltype) return varchar2;
+  
+  function generate_equal_sql (a_column_info xmltype) return varchar2;
 
 end;
 /

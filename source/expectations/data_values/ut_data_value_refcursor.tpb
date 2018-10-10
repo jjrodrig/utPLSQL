@@ -40,7 +40,7 @@ create or replace type body ut_data_value_refcursor as
           --Get some more info regarding cursor, including if it containts collection columns and what is their name
           
           ut_curr_usr_compound_helper.get_columns_info(l_cursor,self.columns_info,self.key_info,
-            self.contain_collection,self.is_non_sql_diffable);
+            self.contain_collection,self.is_sql_diffable);
             
           self.elements_count     := 0;
           -- We use DBMS_XMLGEN in order to:
@@ -60,20 +60,27 @@ create or replace type body ut_data_value_refcursor as
           dbms_xmlgen.setNullHandling(l_ctx, dbms_xmlgen.empty_tag);
           dbms_xmlgen.setMaxRows(l_ctx, c_bulk_rows);
 
-          loop
-            l_xml := dbms_xmlgen.getxmltype(l_ctx);
+          if self.is_sql_diffable = 0 then
+            loop
+              l_xml := dbms_xmlgen.getxmltype(l_ctx);
            
-           execute immediate
+              execute immediate
               'insert into ' || l_ut_owner || '.ut_compound_data_tmp(data_id, item_no, item_data) ' ||
               'select :self_guid, :self_row_count + rownum, value(a) ' ||
               '  from table( xmlsequence( extract(:l_xml,''ROWSET/*'') ) ) a'
               using in self.data_id, self.elements_count, l_xml;
+              exit when sql%rowcount = 0;
+             
+              self.elements_count := self.elements_count + sql%rowcount;
+            end loop;         
+          else
+              l_xml := dbms_xmlgen.getxmltype(l_ctx);
+              execute immediate
+              'insert into ' || l_ut_owner || '.ut_compound_data_tmp(data_id, item_no, item_data) ' ||
+              'values (:self_guid, 1, :xml_data )' 
+              using in self.data_id, l_xml;
+          end if;
 
-            exit when sql%rowcount = 0;
-
-            self.elements_count := self.elements_count + sql%rowcount;
-          end loop;
-          
           ut_expectation_processor.reset_nls_params();
           if l_cursor%isopen then
             close l_cursor;
@@ -252,10 +259,14 @@ create or replace type body ut_data_value_refcursor as
       end if;
      
       if a_unordered then
-      
-        --We will make a decision about type of data inside whether we dump into table or do normal row by row      
-        l_result := l_result + (self as ut_compound_data_value).compare_implementation(a_other, a_exclude_xpath, a_include_xpath, 
-                                a_join_by_xpath, a_unordered, a_inclusion_compare);      
+        if self.is_sql_diffable = 1 then
+          l_result := l_result + (self as ut_compound_data_value).compare_implementation_by_sql(a_other, a_exclude_xpath, a_include_xpath, 
+                                a_join_by_xpath, a_inclusion_compare);  
+        else
+          --We will make a decision about type of data inside whether we dump into table or do normal row by row      
+          l_result := l_result + (self as ut_compound_data_value).compare_implementation(a_other, a_exclude_xpath, a_include_xpath, 
+                                a_join_by_xpath, a_unordered, a_inclusion_compare);  
+        end if;
       else
         l_result := l_result + (self as ut_compound_data_value).compare_implementation(a_other, a_exclude_xpath, a_include_xpath);
       end if;

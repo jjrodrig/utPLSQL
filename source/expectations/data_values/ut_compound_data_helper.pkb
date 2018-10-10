@@ -83,25 +83,6 @@ create or replace package body ut_compound_data_helper is
     return l_filter;
   end;
 
-  function get_columns_filter_no_binds(
-    a_exclude_xpath varchar2, a_include_xpath varchar2,
-    a_table_alias varchar2 := 'ucd', a_column_alias varchar2 := 'item_data'
-  ) return varchar2 is
-    l_filter varchar2(32767);
-    l_source_column varchar2(500) := a_table_alias||'.'||a_column_alias;
-  begin
-    if a_exclude_xpath is null and a_include_xpath is null then
-      l_filter := l_source_column||' as '||a_column_alias;
-    elsif a_exclude_xpath is not null and a_include_xpath is null then
-      l_filter := 'deletexml( '||l_source_column||', '''||a_exclude_xpath||''' ) as '||a_column_alias;
-    elsif a_exclude_xpath is null and a_include_xpath is not null then
-      l_filter := 'xmlelement("ROW",extract( '||l_source_column||', '''||a_include_xpath||''' )) as '||a_column_alias;
-    elsif a_exclude_xpath is not null and a_include_xpath is not null then
-      l_filter := 'xmlelement("ROW",extract( deletexml( '||l_source_column||', '''||a_exclude_xpath||''' ), '''||a_include_xpath||''' )) as '||a_column_alias;
-    end if;
-    return l_filter;
-  end;
-
   function get_columns_diff(
     a_expected xmltype, a_actual xmltype, a_exclude_xpath varchar2, a_include_xpath varchar2
   ) return tt_column_diffs is
@@ -499,13 +480,7 @@ create or replace package body ut_compound_data_helper is
   begin
     return dbms_crypto.hash(a_data, a_hash_type);
   end;
-  
-  function get_sql_hash(a_sql_text varchar2, a_hash_type binary_integer := dbms_crypto.hash_sh1) return t_hash is
-  begin
-    return dbms_sqlhash.gethash(a_sql_text, a_hash_type);
-  end;
-  
-  
+
   function columns_hash(
     a_data_value_cursor ut_data_value_refcursor, a_exclude_xpath varchar2, a_include_xpath varchar2,
     a_hash_type binary_integer := dbms_crypto.hash_sh1
@@ -651,6 +626,42 @@ create or replace package body ut_compound_data_helper is
     
     return l_sql;
   end;
-   
+  
+  function generate_xmltab_stmt (a_column_info xmltype) return varchar2 is
+    l_sql_stmt varchar2(32767);
+  begin
+    for i in (select /*+ CARDINALITY(xt 100) */
+     xt.name
+     from (select a_column_info item_data from dual) x,
+                         xmltable(
+                           '/ROW/*'
+                           passing x.item_data
+                           columns
+                             name     varchar2(4000)  PATH '@xml_valid_name'
+                         ) xt)
+    loop
+      l_sql_stmt := l_sql_stmt || case when l_sql_stmt is null then null else ',' end ||i.name||q'[ varchar2(4000) PATH ']'||i.name||q'[']';
+    end loop;
+    return l_sql_stmt;
+  end;
+  
+  function generate_equal_sql (a_column_info xmltype) return varchar2 is
+    l_sql_stmt varchar2(32767);
+  begin
+    for i in (select /*+ CARDINALITY(xt 100) */
+     xt.name
+     from (select a_column_info item_data from dual) x,
+                         xmltable(
+                           '/ROW/*'
+                           passing x.item_data
+                           columns
+                             name     varchar2(4000)  PATH '@xml_valid_name'
+                         ) xt)
+    loop
+      l_sql_stmt := l_sql_stmt || case when l_sql_stmt is null then null else ' and ' end ||' a.'||i.name||q'[ = ]'||' e.'||i.name;
+    end loop;
+    return l_sql_stmt;
+  end;
+  
 end;
 /

@@ -6,13 +6,30 @@ create or replace package body ut_curr_usr_compound_helper is
   g_anytype_collection_name t_type_name_map;
   g_user_defined_type       pls_integer := dbms_sql.user_defined_type;
   g_is_collection           boolean := false;
-
+  g_is_non_sql_diff         boolean := false;
+ 
   procedure set_collection_state(a_is_collection boolean) is
   begin
     --Make sure that we set a g_is_collection only once so we dont reset from true to false.
     if not g_is_collection then
       g_is_collection := a_is_collection;
     end if;
+  end;
+
+  procedure set_sql_diff_state(a_is_non_sql_diff boolean) is
+  begin
+    --Make sure that we set a g_is_collection only once so we dont reset from true to false.
+    if not g_is_non_sql_diff then
+      g_is_non_sql_diff := a_is_non_sql_diff;
+    end if;
+  end;
+
+  function is_sql_compare_allowed(a_type_name varchar2) return boolean is
+  begin
+    --clob/blob/xmltype/object/nestedcursor/nestedtable
+    null;
+    return true;
+    --if a_type_name IN (g_anytype_name_map(dbms_types.typecode_blob),g_anytype_name_map(dbms_types.typecode_clob)
   end;
 
   function get_column_type(a_desc_rec dbms_sql.desc_rec3, a_desc_user_types boolean := false) return ut_key_anyval_pair is
@@ -32,18 +49,24 @@ create or replace package body ut_curr_usr_compound_helper is
     end;
     
     begin 
+      dbms_output.put_line(g_type_name_map(a_desc_rec.col_type));
       if g_type_name_map.exists(a_desc_rec.col_type) then
         l_data := ut_data_value_varchar2(g_type_name_map(a_desc_rec.col_type));
+        set_sql_diff_state(is_sql_compare_allowed(g_type_name_map(a_desc_rec.col_type)));
       /*If its a collection regardless is we want to describe user defined types we will return just a name
       and capture that name */
       elsif a_desc_rec.col_type = g_user_defined_type and is_collection(a_desc_rec.col_schema_name,a_desc_rec.col_type_name) then
         l_data := ut_data_value_varchar2(a_desc_rec.col_schema_name||'.'||a_desc_rec.col_type_name);
         set_collection_state(true);
+        set_sql_diff_state(true);
       elsif a_desc_rec.col_type = g_user_defined_type and a_desc_user_types then
         l_data :=ut_data_value_xmltype(get_user_defined_type(a_desc_rec.col_schema_name,a_desc_rec.col_type_name));
+        set_sql_diff_state(true);
       elsif a_desc_rec.col_schema_name is not null and a_desc_rec.col_type_name is not null then
         l_data := ut_data_value_varchar2(a_desc_rec.col_schema_name||'.'||a_desc_rec.col_type_name);
+        set_sql_diff_state(true);
       end if;
+      
       return ut_key_anyval_pair(a_desc_rec.col_name,l_data);
     end;
 
@@ -83,7 +106,8 @@ create or replace package body ut_curr_usr_compound_helper is
     a_cursor in out nocopy sys_refcursor,
     a_columns_info out nocopy xmltype,
     a_join_by_info out nocopy xmltype,
-    a_contains_collection out nocopy number
+    a_contains_collection out nocopy number,
+    a_is_non_sql_diffable out nocopy number
   ) is
     l_columns_info         xmltype;
     l_join_by_info         xmltype;
@@ -110,6 +134,7 @@ create or replace package body ut_curr_usr_compound_helper is
     into a_columns_info,a_join_by_info from dual;
    
     a_contains_collection := ut_utils.boolean_to_int(g_is_collection);
+    a_is_non_sql_diffable := ut_utils.boolean_to_int(g_is_non_sql_diff);
   end;
 
   function get_anytype_attribute_count (a_anytype anytype) return pls_integer is

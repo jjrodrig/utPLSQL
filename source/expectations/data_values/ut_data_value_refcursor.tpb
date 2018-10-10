@@ -40,8 +40,8 @@ create or replace type body ut_data_value_refcursor as
           --Get some more info regarding cursor, including if it containts collection columns and what is their name
           
           ut_curr_usr_compound_helper.get_columns_info(l_cursor,self.columns_info,self.key_info,
-            self.contain_collection);
-          
+            self.contain_collection,self.is_non_sql_diffable);
+            
           self.elements_count     := 0;
           -- We use DBMS_XMLGEN in order to:
           -- 1) be able to process data in bulks (set of rows)
@@ -224,6 +224,8 @@ create or replace type body ut_data_value_refcursor as
                                                      a_unordered boolean, a_inclusion_compare boolean := false) return integer is
     l_result          integer := 0;
     l_other           ut_data_value_refcursor;
+    l_is_sql_diff     boolean;
+    
     function is_pk_missing (a_pk_missing_tab ut_compound_data_helper.tt_missing_pk) return integer is
     begin
       return case when a_pk_missing_tab.count > 0 then 1 else 0 end;
@@ -234,13 +236,13 @@ create or replace type body ut_data_value_refcursor as
     end if;
 
     l_other   := treat(a_other as ut_data_value_refcursor);
-    
+        
     --if we join by key and key is missing fail and report error
     if a_join_by_xpath is not null then 
       l_result := is_pk_missing(ut_compound_data_helper.is_pk_exists(self.key_info, l_other.key_info, a_exclude_xpath, 
                                 a_include_xpath,a_join_by_xpath));
     end if;
-    
+        
     if l_result = 0 then
       --if column names/types are not equal - build a diff of column names and types
       if ut_compound_data_helper.columns_hash( self, a_exclude_xpath, a_include_xpath )
@@ -250,6 +252,8 @@ create or replace type body ut_data_value_refcursor as
       end if;
      
       if a_unordered then
+      
+        --We will make a decision about type of data inside whether we dump into table or do normal row by row      
         l_result := l_result + (self as ut_compound_data_value).compare_implementation(a_other, a_exclude_xpath, a_include_xpath, 
                                 a_join_by_xpath, a_unordered, a_inclusion_compare);      
       else

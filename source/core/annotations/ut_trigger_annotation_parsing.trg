@@ -1,5 +1,5 @@
 create or replace trigger ut_trigger_annotation_parsing
-  before create or alter or drop
+  after create or alter or drop
 on database
 begin
   if    ora_dict_obj_type = 'PACKAGE'
@@ -7,9 +7,9 @@ begin
          and ora_dict_obj_name = 'UT3_TRIGGER_ALIVE'
          and ora_dict_obj_type = 'SYNONYM')
   then
-    ut_annotation_manager.trigger_obj_annotation_rebuild;
+    execute immediate 'begin ut_annotation_manager.trigger_obj_annotation_rebuild; end;';
   end if;
-  exception
+exception
   when others then null;
 end;
 /

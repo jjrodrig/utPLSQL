@@ -31,47 +31,49 @@ create or replace package body ut_annotation_cache_manager as
   end;
 
   procedure update_cache(a_object ut_annotated_object) is
-    l_cache_id       integer;
-    l_current_schema varchar2(250) := ut_utils.ut_owner;
-    l_parse_time     date := sysdate;
+    l_cache_id          integer;
+    l_current_schema    varchar2(250) := ut_utils.ut_owner;
+    l_parse_time        date := sysdate;
+    l_new_objects_count integer := 0;
     pragma autonomous_transaction;
   begin
-    update ut_annotation_cache_info i
-       set i.parse_time = l_parse_time
-     where (i.object_owner, i.object_name, i.object_type)
-        in ((a_object.object_owner, a_object.object_name, a_object.object_type))
-      returning cache_id into l_cache_id;
-    if sql%rowcount = 0 then
-      insert into ut_annotation_cache_info
-             (cache_id, object_owner, object_name, object_type, parse_time)
-      values (ut_annotation_cache_seq.nextval, a_object.object_owner, a_object.object_name, a_object.object_type, l_parse_time)
+    -- if not in trigger, or object has annotations
+    if ora_sysevent is null or a_object.annotations is not null and a_object.annotations.count > 0 then
+
+      update ut_annotation_cache_info i
+         set i.parse_time = l_parse_time
+       where (i.object_owner, i.object_name, i.object_type)
+          in ((a_object.object_owner, a_object.object_name, a_object.object_type))
         returning cache_id into l_cache_id;
 
-      update ut_annotation_cache_schema s
-         set s.object_count = s.object_count + 1, s.max_parse_time = l_parse_time
-       where s.object_type = a_object.object_type and s.object_owner = a_object.object_owner;
       if sql%rowcount = 0 then
-        insert into ut_annotation_cache_schema s
-               (object_owner, object_type, object_count, max_parse_time)
-        values (a_object.object_owner, a_object.object_type, 1, l_parse_time);
+
+        insert into ut_annotation_cache_info
+               (cache_id, object_owner, object_name, object_type, parse_time)
+        values (ut_annotation_cache_seq.nextval, a_object.object_owner, a_object.object_name, a_object.object_type, l_parse_time)
+          returning cache_id into l_cache_id;
+        l_new_objects_count := 1;
       end if;
+
     end if;
 
-    delete from ut_annotation_cache c
-      where cache_id = l_cache_id;
+    update ut_annotation_cache_schema s
+    set s.object_count = s.object_count + l_new_objects_count, s.max_parse_time = l_parse_time
+    where s.object_type = a_object.object_type and s.object_owner = a_object.object_owner;
+
+    if sql%rowcount = 0 then
+      insert into ut_annotation_cache_schema s
+          (object_owner, object_type, object_count, max_parse_time)
+      values (a_object.object_owner, a_object.object_type, l_new_objects_count, l_parse_time);
+    end if;
+
+    delete from ut_annotation_cache c where cache_id = l_cache_id;
 
     if a_object.annotations is not null and a_object.annotations.count > 0 then
---       begin
       insert into ut_annotation_cache
              (cache_id, annotation_position, annotation_name, annotation_text, subobject_name)
       select l_cache_id, a.position, a.name, a.text, a.subobject_name
         from table(a_object.annotations) a;
-      --TODO - duplicate annotations found?? - should not happen, getting standalone annotations need to happen after procedure annotations were parsed
---       exception
---         when others then
---           dbms_output.put_line(xmltype(anydata.convertCollection(a_object.annotations)).getclobval);
---           raise;
---       end;
     end if;
     commit;
   end;
@@ -82,16 +84,31 @@ create or replace package body ut_annotation_cache_manager as
   begin
     delete_object_annotations(a_objects);
 
-    merge into ut_annotation_cache_info i
-      using (select o.object_name, o.object_type, o.object_owner
-               from table(a_objects) o ) o
-         on (o.object_name = i.object_name
-             and o.object_type = i.object_type
-             and o.object_owner = i.object_owner)
-     when matched then update set parse_time = sysdate
-     when not matched then insert
-           (cache_id, object_owner, object_name, object_type, parse_time)
-     values (ut_annotation_cache_seq.nextval, o.object_owner, o.object_name, o.object_type, sysdate);
+    if ora_sysevent is null then
+      merge into ut_annotation_cache_info i
+        using (select o.object_name, o.object_type, o.object_owner
+                 from table(a_objects) o ) o
+           on (o.object_name = i.object_name
+               and o.object_type = i.object_type
+               and o.object_owner = i.object_owner)
+       when matched then update set parse_time = sysdate
+       when not matched then insert
+             (cache_id, object_owner, object_name, object_type, parse_time)
+       values (ut_annotation_cache_seq.nextval, o.object_owner, o.object_name, o.object_type, sysdate);
+    else
+      delete from ut_annotation_cache_info i
+       where exists (
+               select 1 from table (a_objects) o
+                where o.object_name = i.object_name
+                  and o.object_type = i.object_type
+                  and o.object_owner = i.object_owner);
+
+      if sql%rowcount > 0 then
+        update ut_annotation_cache_schema s
+        set s.object_count = s.object_count - 1
+        where s.object_owner in (select o.object_owner from table (a_objects) o);
+      end if;
+    end if;
 
     commit;
   end;
@@ -113,6 +130,7 @@ create or replace package body ut_annotation_cache_manager as
 
   procedure delete_cache(a_objects ut_annotation_objs_cache_info) is
     pragma autonomous_transaction;
+    l_rows_deleted integer;
   begin
     if a_objects is not null then
       delete_object_annotations(a_objects);
@@ -124,9 +142,9 @@ create or replace package body ut_annotation_cache_manager as
                   and o.object_type = i.object_type
                   and o.object_owner = i.object_owner
              );
-
+      l_rows_deleted := sql%rowcount;
       update ut_annotation_cache_schema s
-         set s.object_count = s.object_count - cardinality(a_objects)
+         set s.object_count = s.object_count - l_rows_deleted
        where (s.object_type, s.object_owner)
           in (select o.object_type, o.object_owner from table(a_objects) o );
 

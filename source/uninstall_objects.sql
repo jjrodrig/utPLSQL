@@ -133,6 +133,8 @@ drop table ut_compound_data_tmp;
 
 drop table ut_compound_data_diff_tmp;
 
+drop trigger ut_trigger_annotation_parsing;
+
 drop package ut_annotation_manager;
 
 drop package ut_annotation_parser;
@@ -142,6 +144,8 @@ drop package ut_annotation_cache_manager;
 drop table ut_annotation_cache cascade constraints;
 
 drop table ut_annotation_cache_info cascade constraints;
+
+drop table ut_annotation_cache_schema cascade constraints;
 
 drop sequence ut_annotation_cache_seq;
 
@@ -156,6 +160,8 @@ drop type ut_annotated_object force;
 drop type ut_annotations force;
 
 drop type ut_annotation force;
+
+drop package ut_trigger_check;
 
 drop package ut_file_mapper;
 

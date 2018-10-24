@@ -36,6 +36,7 @@ create or replace package test_annotation_manager is
 
   --%test(Keeps annotations in cache after object was removed)
   --%beforetest(create_dummy_test_package)
+  --%disabled(no longer true aith trigger implemented)
   procedure keep_dropped_data_in_cache;
 
   --%test(Does not return data for dropped object)

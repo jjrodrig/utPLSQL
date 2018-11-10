@@ -319,5 +319,11 @@ create or replace package test_expectations_cursor is
   --%test( Unordered fix for issues with duplicate no : #764 )   
   procedure unordered_fix_764;
  
+  --%test( Compare cursors join by single key more than 10000 rows)
+  procedure cursor_joinby_compare_10000; 
+
+  --%test(Compares cursors with more than 10000 rows)
+  procedure compares_over_10000_rows;  
+ 
 end;
 /

@@ -2047,5 +2047,31 @@ Diff:%
     ut.expect(expectations.failed_expectations_data()).to_be_empty();
   end;
   
+   procedure cursor_unorder_compare_1000 is
+    l_actual   SYS_REFCURSOR;
+    l_expected SYS_REFCURSOR;
+  begin
+    --Arrange
+    open l_actual for select level object_id, level || '_TEST' object_name from dual connect by level  <=1100;
+    open l_expected for select level object_id, level || '_TEST' object_name from dual connect by level  <=1100;
+    --Act
+    ut3.ut.expect(l_actual).to_equal(l_expected).unordered;
+    --Assert
+    ut.expect(expectations.failed_expectations_data()).to_be_empty();
+  end; 
+  
+  procedure cursor_unorder_compare_10000 is
+    l_actual   SYS_REFCURSOR;
+    l_expected SYS_REFCURSOR;
+  begin
+    --Arrange
+    open l_actual for select level object_id, level || '_TEST' object_name from dual connect by level  <=11000;
+    open l_expected for select level object_id, level || '_TEST' object_name from dual connect by level  <=11000;
+    --Act
+    ut3.ut.expect(l_actual).to_equal(l_expected).unordered;
+    --Assert
+    ut.expect(expectations.failed_expectations_data()).to_be_empty();
+  end; 
+  
 end;
 /

@@ -324,6 +324,12 @@ create or replace package test_expectations_cursor is
 
   --%test(Compares cursors with more than 10000 rows)
   procedure compares_over_10000_rows;  
+
+  --%test( Compare cursors unorder more than 1000 rows)
+  procedure cursor_unorder_compare_1000;
  
+  --%test( Compare cursors unorder more than 10000 rows)
+  procedure cursor_unorder_compare_10000; 
+  
 end;
 /
